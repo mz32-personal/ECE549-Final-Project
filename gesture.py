@@ -29,3 +29,12 @@ test_dataloader = torch.utils.data.DataLoader(
     prefetch_factor=conf.train_params.prefetch_factor,
 )
 
+# TODO: Make sense of how the dataset works
+
+# TODO: define a neural network model
+
+# TODO: set up an optimizer and loss funciton (criterion)
+
+# TODO: set up training loop and back propagation (loss.backward())
+
+# TODO: test model accuracy

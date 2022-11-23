@@ -11,7 +11,7 @@ from omegaconf import DictConfig
 from PIL import Image, ImageOps
 
 from classifier.preprocess import Compose, get_crop_from_bbox
-from constants import IMAGES
+IMAGES = (".jpeg", ".jpg", ".jp2", ".png", ".tiff", ".jfif", ".bmp", ".webp", ".heic")
 
 
 class GestureDataset(torch.utils.data.Dataset):

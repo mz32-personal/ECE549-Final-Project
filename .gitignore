@@ -1,3 +1,8 @@
 # ignore datasets
 ann_subsample/
 subsample/
+
+# ignore cashe
+__pycache__/
+.DS_Store
+classifier/__pycache__/
