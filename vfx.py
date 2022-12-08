@@ -8,6 +8,7 @@ from scipy.spatial import distance
 from scipy import ndimage
 import time
 import math
+import colorsys 
 
 def segment(frame):
     image = np.float32(frame.reshape((-1,3)))
@@ -353,19 +354,24 @@ def track(effect):
     
     #x, y (col, row)
     center = [0,0] 
+    prev_center = [0,0]
     # if the center hasn't been detected for a certain amount of time stop displaying flame
     no_center_count = 0
     no_center_limit = 5
     
     # need previous frame for optical flow
     ret, prev_frame = video.read()
+    prev_frame = cv2.flip(prev_frame, 1)
     # history of flow directions
     direction = np.full(6, "N")
     # how much the effect should be tilted
     tilt_num = 0
+    # coloring effect (hsv)
+    color_effect = 0
     while True:
         #frame is in BGR, shape: (720, 1280, 3)
         ret, frame = video.read()
+        frame = cv2.flip(frame, 1)
         # keep a copy of the raw unaltered frame
         raw_frame = frame.copy()
         #ret_usb, frame_usb = video_usb.read()
@@ -385,7 +391,7 @@ def track(effect):
 
         # detect shape
         contours, hiearchy  = cv2.findContours(threshold_frame, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+        prev_center = center.copy()
         for c in range(len(contours)):
             if (cv2.contourArea(contours[c]) > 25):
                 cv2.drawContours(frame, [contours[c]], 0, (0, 0, 255), 5)
@@ -401,8 +407,15 @@ def track(effect):
             direction = np.insert(direction, 0, optical_flow(prev_frame, raw_frame, center, frame))
             direction = direction[:6]
             # add effect to video at center point
-            overlay_effect(frame, effect_tilt(effect[vfx_num], tilt_num), center)
-        
+            flame = effect[vfx_num].copy()
+            flame[:,:,0] =  flame[:,:,0] + color_effect/255
+            flame[:,:,2] =  flame[:,:,2] - color_effect/255
+            print(color_effect)
+            overlay_effect(frame, effect_tilt(flame, tilt_num), center)
+   
+            #print(math.dist(prev_center, center))
+            
+
 
         # increment to next frame in vfx
         vfx_num = (vfx_num+1)%vfx_length
@@ -411,22 +424,35 @@ def track(effect):
         # no center count continuously increments and is only reset if a center is found
         no_center_count +=1
 
-        # determine tilt of effect using optical flow direction
-        if np.count_nonzero(direction[:5] == "L") >=3:
-            tilt_num = max(tilt_num - 0.25, -3.5) 
-        elif np.count_nonzero(direction[:5] == "R")>=3:
-            tilt_num = min(tilt_num + 0.25, 3.5) 
+        # determine if the effect should tilt or resize depending on optical flow and movement of the center
+        center_thres = 7.5
+        if math.dist(prev_center, center) > center_thres:
+            # if center is moving and optical flow is left/right then the effect tilts
+            if np.count_nonzero(direction[:5] == "L") >=3:
+                tilt_num = max(tilt_num - 0.25, -3.5) 
+            elif np.count_nonzero(direction[:5] == "R")>=3:
+                tilt_num = min(tilt_num + 0.25, 3.5) 
+            else:
+                # stopped going left but still moving
+                if tilt_num < 0:
+                    tilt_num = min(tilt_num + 0.75, 0) 
+                # stopped going right but still moving
+                elif tilt_num > 0:
+                    tilt_num = max(tilt_num - 0.75, 0) 
         else:
-            # stopped going left
+            # if center is not moving and optical flow is up/down then the effect should resize
+            #  stopped moving so effect should stop tilting
             if tilt_num < 0:
                 tilt_num = min(tilt_num + 0.75, 0) 
-            # stopped going right
             elif tilt_num > 0:
-                tilt_num = max(tilt_num - 0.75, 0) 
-        # tilt_count +=1
-        # if tilt_count > 3:
-        #     tilt_count = 0
-        #     tilt_num = (tilt_num + 0.25) %10
+                tilt_num = max(tilt_num - 0.75, 0)  
+
+            # optical flow is up or down
+            if np.count_nonzero(direction[:5] == "U") >=3:
+                color_effect = min(color_effect+15, 225)
+            elif np.count_nonzero(direction[:5] == "D")>=3:
+                color_effect = max(color_effect-15, 0)
+
 
         # display frame
         cv2.imshow("computer camera", frame)
