@@ -198,7 +198,7 @@ def testing():
 def local_flow(flow):
     # left, right, up, down
     directions = np.array([0, 0, 0, 0])
-    magn_thresh = 50
+    magn_thresh = 20
     diff_thresh = 200
     # separate (u,v) into vertical and horizontal components
     for f in flow:
@@ -218,92 +218,65 @@ def local_flow(flow):
     #     print("zoom")
     # else:
     #     print("up: ", directions[2], "down: ", directions[3], "left: ", directions[0], "right: ", directions[1])
-    key = ["left", "right", "up", "down"]
+    key = ["L", "R", "U", "D"]
     if max(directions) > magn_thresh:
         print(key[np.argmax(directions)])
+        return key[np.argmax(directions)]
+    return "N"
 
-# calculate optical flow of a video stream
-def global_optical_flow():
+# calculate optical flow of a video stream and local flow around center point given
+# note: center = (x,y)
+def optical_flow(prev_frame, frame, center, display):
     window_size = (25, 25) #height x width
-    video = cv2.VideoCapture(0)
 
-    # give camera time to connect
-    time.sleep(1)
+    # convert to grayscale
+    prev_frame = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)/255
+    frame_g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)/255
 
-    history = []
-    hist_len = 3
-    ret, prev_frame = video.read()
-    prev_frame = cv2.flip(cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)/255, 1)
-    history.append(prev_frame)
-    while True:
-        #frame is in BGR, shape: (720, 1280, 3)
-        ret, frame = video.read()
-        frame = cv2.flip(frame, 1)
-        if not ret:
-            print("Frame not read correctly")
-            break
-        
-        # convert to grayscale
-        frame_g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)/255
+    # smooth image
+    frame_g = scipy.ndimage.gaussian_filter(frame_g, 3)
+    prev_frame = scipy.ndimage.gaussian_filter(prev_frame, 3)
 
-        # smooth image
-        frame_g = scipy.ndimage.gaussian_filter(frame_g, 3)
-        # calculate gradients
-        #Ix = scipy.ndimage.gaussian_filter(frame_g, 2, order=(0,1))
-        #Iy = scipy.ndimage.gaussian_filter(frame_g, 2, order=(1,0))
-
-        Ix = scipy.ndimage.convolve(frame_g, [[2,0,-2]])
-        Iy = scipy.ndimage.convolve(frame_g, [[2],[0], [-2]])
-        It = frame_g - history[0]
-        
-        # for each window calculate (u,v)
-        height = frame_g.shape[0]
-        width = frame_g.shape[1]
-        flow = []
-        # iterate through each window
-        for i in range(0, height - window_size[0], window_size[0]):
-            for j in range(0, width - window_size[1], window_size[1]):
-                A = np.append(Ix[i: i + window_size[0], j: j + window_size[1]].flatten(), Iy[i: i + window_size[0], j: j + window_size[1]].flatten())
-                A = A.reshape((window_size[0] * window_size[1],2), order = 'F')
-                b = -(It[i: i + window_size[0], j: j + window_size[1]].flatten())
-                #solution, residuals, rank, s = np.linalg.lstsq(A, b)
+    Ix = scipy.ndimage.convolve(frame_g, [[2,0,-2]])
+    Iy = scipy.ndimage.convolve(frame_g, [[2],[0], [-2]])
+    It = frame_g - prev_frame
+    
+    # for each window calculate (u,v)
+    height = frame_g.shape[0]
+    width = frame_g.shape[1]
+    flow = []
+    # iterate through each window
+    for i in range(0, height - window_size[0], window_size[0]):
+        for j in range(0, width - window_size[1], window_size[1]):
+            A = np.append(Ix[i: i + window_size[0], j: j + window_size[1]].flatten(), Iy[i: i + window_size[0], j: j + window_size[1]].flatten())
+            A = A.reshape((window_size[0] * window_size[1],2), order = 'F')
+            b = -(It[i: i + window_size[0], j: j + window_size[1]].flatten())
+            #solution, residuals, rank, s = np.linalg.lstsq(A, b)
+            #print(solution)
+            At_A = np.matmul(np.transpose(A), A)
+            if np.linalg.det(At_A) != 0:
+                solution = np.matmul(np.matmul(np.linalg.inv(At_A), np.transpose(A)), b)
                 #print(solution)
-                At_A = np.matmul(np.transpose(A), A)
-                if np.linalg.det(At_A) != 0:
-                    solution = np.matmul(np.matmul(np.linalg.inv(At_A), np.transpose(A)), b)
-                    #print(solution)
-                    flow.append((i + window_size[0]//2, j + window_size[1]//2, solution))
-        
-        
-        # local flow
-        local_subset = []
-        upper_left = (width//8, frame.shape[0]//16)
-        bottom_right = (width//8+400, frame.shape[0]//16+500)
-        cv2.rectangle(frame, upper_left, bottom_right, (0, 255, 0), 3)
+                flow.append((i + window_size[0]//2, j + window_size[1]//2, solution))
+    
+    # local flow
+    local_subset = []
+    upper_left = (max(0, center[0] - 250), max(0, center[1] - 50))
+    bottom_right = (min(width-1, center[0] + 250), min(height-1, center[1] + 300))
+    #cv2.rectangle(display, upper_left, bottom_right, (0, 255, 0), 3)
 
-        # draw arrows on image
-        for f in flow:
-            start_point = (int(f[1]), int(f[0])) #x, y
-            end_point = (int(f[1] + f[2][0]), int(f[0] + f[2][1]))
-            #print(end_point)
-            if start_point[0] > upper_left[0] and start_point[0] < bottom_right[0] and start_point[1] > upper_left[1] and start_point[1] < bottom_right[1]:
-                local_subset.append(f)
-                frame = cv2.arrowedLine(frame, start_point, end_point, (255, 0, 0), 2, tipLength=0.25)
-        
-        local_flow(local_subset)
-        # display frame
-        cv2.imshow("camera", frame)
-        #cv2.imshow("gradient t", It)
-        #cv2.imshow("gradient x", Ix)
-        #cv2.imshow("gradient y", Iy)
-        if cv2.waitKey(1) == ord('q'):
-            break
+    # draw arrows on image
+    for f in flow:
+        start_point = (int(f[1]), int(f[0])) #x, y
+        end_point = (int(f[1] + f[2][0]), int(f[0] + f[2][1]))
+        #print(end_point)
+        if start_point[0] > upper_left[0] and start_point[0] < bottom_right[0] and start_point[1] > upper_left[1] and start_point[1] < bottom_right[1]:
+            local_subset.append(f)
+            display = cv2.arrowedLine(display, start_point, end_point, (255, 0, 0), 2, tipLength=0.25)
+    
+    direction = local_flow(local_subset)
+    return direction
 
-        #update history
-        prev_frame = frame_g
-        history.insert(0, prev_frame)
-        if len(history) > hist_len:
-            history = history[:hist_len]
     
 
 # convert .mov to np array
@@ -371,21 +344,30 @@ def overlay_effect(frame, effect, center):
 # track a green shape and add fireball effect
 def track(effect):
     video = cv2.VideoCapture(0)
+    # give camera time to connect
+    time.sleep(1)
+
     #video_usb = cv2.VideoCapture(1)
     vfx_num = 0
     vfx_length = effect.shape[0]
-    vfx_shape = effect[0].shape
+    
     #x, y (col, row)
     center = [0,0] 
     # if the center hasn't been detected for a certain amount of time stop displaying flame
     no_center_count = 0
     no_center_limit = 5
-
+    
+    # need previous frame for optical flow
+    ret, prev_frame = video.read()
+    # history of flow directions
+    direction = np.full(6, "N")
+    # how much the effect should be tilted
     tilt_num = 0
-    tilt_count = 0
     while True:
         #frame is in BGR, shape: (720, 1280, 3)
         ret, frame = video.read()
+        # keep a copy of the raw unaltered frame
+        raw_frame = frame.copy()
         #ret_usb, frame_usb = video_usb.read()
         #print(frame.shape)
         if not ret:
@@ -417,20 +399,40 @@ def track(effect):
         cv2.circle(frame, (center[0],center[1]), 5, (255, 0, 0), 3)
 
         if center[0] > 0 and no_center_count < no_center_limit:
-            overlay_effect(frame, effect_tilt(effect[vfx_num], -tilt_num), center)
+             # calculate optical flow around center point
+            direction = np.insert(direction, 0, optical_flow(prev_frame, raw_frame, center, frame))
+            direction = direction[:6]
+            # add effect to video at center point
+            overlay_effect(frame, effect_tilt(effect[vfx_num], tilt_num), center)
         
+
         # increment to next frame in vfx
         vfx_num = (vfx_num+1)%vfx_length
+        # update previous frame for optical flow
+        prev_frame = raw_frame
         # no center count continuously increments and is only reset if a center is found
         no_center_count +=1
-        tilt_count +=1
-        if tilt_count > 3:
-            tilt_count = 0
-            tilt_num = (tilt_num + 0.25) %10
+
+        # determine tilt of effect using optical flow direction
+        if np.count_nonzero(direction[:5] == "L") >=3:
+            tilt_num = max(tilt_num - 0.25, -3.5) 
+        elif np.count_nonzero(direction[:5] == "R")>=3:
+            tilt_num = min(tilt_num + 0.25, 3.5) 
+        else:
+            # stopped going left
+            if tilt_num < 0:
+                tilt_num = min(tilt_num + 0.5, 0) 
+            # stopped going right
+            elif tilt_num > 0:
+                tilt_num = max(tilt_num - 0.5, 0) 
+        # tilt_count +=1
+        # if tilt_count > 3:
+        #     tilt_count = 0
+        #     tilt_num = (tilt_num + 0.25) %10
 
         # display frame
         cv2.imshow("computer camera", frame)
-        cv2.imshow("color", threshold_frame)
+        #cv2.imshow("color", threshold_frame)
         #cv2.imshow("usb camera", frame_usb)
         if cv2.waitKey(1) == ord('q'):
             break
@@ -458,8 +460,8 @@ if __name__ == "__main__":
     #         cv2.imshow("tilted", output)
     #         cv2.waitKey(50)
     track(effect_arr)
+   
     '''
-    #optical_flow()
     frame = np.array([[[1], [2]], [[3], [4]]])
     print(frame)
     print(effect_tilt(frame, 1))
