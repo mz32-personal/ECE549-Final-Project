@@ -220,7 +220,7 @@ def local_flow(flow):
     #     print("up: ", directions[2], "down: ", directions[3], "left: ", directions[0], "right: ", directions[1])
     key = ["L", "R", "U", "D"]
     if max(directions) > magn_thresh:
-        print(key[np.argmax(directions)])
+        #print(key[np.argmax(directions)])
         return key[np.argmax(directions)]
     return "N"
 
@@ -376,8 +376,8 @@ def track(effect):
         
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         # Threshold for pink
-        lower_bound = np.array([160, 100, 120])
-        upper_bound = np.array([170, 255, 200])
+        lower_bound = np.array([160, 75, 120])
+        upper_bound = np.array([175, 255, 200])
         # Threshold for green
         #lower_bound = np.array([30, 50, 120])
         #upper_bound = np.array([40, 200, 255])
@@ -387,9 +387,7 @@ def track(effect):
         contours, hiearchy  = cv2.findContours(threshold_frame, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         for c in range(len(contours)):
-            if c == 0:
-                continue
-            if (cv2.contourArea(contours[c]) > 50):
+            if (cv2.contourArea(contours[c]) > 25):
                 cv2.drawContours(frame, [contours[c]], 0, (0, 0, 255), 5)
                 # find the center of the shape
                 M = cv2.moments(contours[c])
@@ -421,10 +419,10 @@ def track(effect):
         else:
             # stopped going left
             if tilt_num < 0:
-                tilt_num = min(tilt_num + 0.5, 0) 
+                tilt_num = min(tilt_num + 0.75, 0) 
             # stopped going right
             elif tilt_num > 0:
-                tilt_num = max(tilt_num - 0.5, 0) 
+                tilt_num = max(tilt_num - 0.75, 0) 
         # tilt_count +=1
         # if tilt_count > 3:
         #     tilt_count = 0
