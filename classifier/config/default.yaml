@@ -40,7 +40,7 @@ scheduler:
   start_factor: 0.001
 train_params:
   epochs: 100
-  num_workers: 8
+  num_workers: 1
   train_batch_size: 64
   test_batch_size: 64
   prefetch_factor: 16
