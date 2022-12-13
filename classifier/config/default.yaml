@@ -24,14 +24,14 @@ dataset:
   image_size: [224, 224]
   subset: 2000
 random_state: 42
-device: 'cpu'
+device: 'cuda'
 experiment_name: MobileNetV3_small
 model:
   name: 'MobileNetV3_small'  # 'MobileNetV3_large' or 'MobileNetV3_small' or 'ResNet18'
   pretrained: False
   freezed: False
   start_epoch: 0
-  checkpoint: /path/to/chackpoint
+  checkpoint: ./saved_model.pth
 optimizer:
   lr: 0.005
   momentum: 0.9
