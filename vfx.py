@@ -211,10 +211,8 @@ def testing():
         if cv2.waitKey(1) == ord('q'):
             break
     
-# def sample_hand():
-
-# gesture detection using convex hull
-def gesture():
+# get lower and upper threshold for sampled skin 
+def sample_hand():
     video = cv2.VideoCapture(0)
     time.sleep(1)
     ret, ref_frame = video.read()
@@ -253,7 +251,8 @@ def gesture():
             samples.append(second_sample/(sample_size**2))
             break
 
-    print(samples)
+    cv2.destroyWindow("computer camera")
+    #print(samples)
 
     lower_thresh = np.array([min(samples[0][0], samples[1][0]), min(samples[0][1], samples[1][1]), min(samples[0][2], samples[1][2])])
     upper_thresh = np.array([max(samples[0][0], samples[1][0]), max(samples[0][1], samples[1][1]), max(samples[0][2], samples[1][2])])
@@ -270,91 +269,62 @@ def gesture():
     lower_thresh[2] = max(lower_thresh[2] - 45, 75)
     upper_thresh[2] = min(upper_thresh[2] + 45, 255)
 
-    print(lower_thresh)
-    print(upper_thresh)
+    return (lower_thresh, upper_thresh)
 
-    while True:
-        ret, frame = video.read()
-        if not ret:
-            print("Frame not read correctly")
-            break
-
-        frame = cv2.flip(frame, 1)
-
-        # threshold image based on color
-        edges = cv2.adaptiveThreshold(scipy.ndimage.gaussian_filter(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY),3), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 13, 2)/255
+# gesture detection using convex hull
+def gesture(lower_thresh, upper_thresh, frame):
+    # color threshold image
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    threshold_frame = cv2.inRange(hsv, lower_thresh, upper_thresh)
+   
+    # find contours
+    contours, hiearchy  = cv2.findContours(threshold_frame, cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+    #print("contours: ", len(contours))
+    largest_c = -1
+    largest_area = -1
+    for c in range(len(contours)):
+        if (cv2.contourArea(contours[c]) > largest_area):
+            largest_c = c
+            largest_area = cv2.contourArea(contours[c]) 
+    
+    center = np.array([-1,-1])
+    num_fingers = 0
+    finger_points = []
+    if largest_c > -1:
+        # find convex hull and defects
+        hull = cv2.convexHull(contours[largest_c])
+        # hull_ind = np.array(cv2.convexHull(contours[largest_c], returnPoints=False))
+        # hull_ind[::-1].sort(axis = 0)
+        # defects = cv2.convexityDefects(contours[largest_c], hull_ind)
         
-        # frame_edge = frame
-        # for i in range(3):
-        #     frame_edge[:,:,i] = frame_edge[:,:,i]*edges
+        # find vertices of outline
+        perim = cv2.arcLength(hull, True)
+        poly = cv2.approxPolyDP(hull, 0.02*perim, True)
+        # print(poly.shape)
 
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        threshold_frame = cv2.inRange(hsv, lower_thresh, upper_thresh)
-        #threshold_frame = threshold_frame * edges
-        #threshold_frame = scipy.ndimage.convolve(threshold_frame, [[1/3, 1/3, 1/3]])
+        # find center of hand
+        center = (np.sum(poly, axis = 0)//poly.shape[0])[0]
+        center[1] = int(center[1] + perim/24)
+        radius = int(perim/7)
+        cv2.circle(frame, center, radius, (255,0,255), 2)
+
+        # count fingers
         
-        #edges = 1 - cv2.Canny(frame, 50, 75)/255
-        # frame_smoothed = scipy.ndimage.gaussian_filter(frame, 3)
-        # ref_frame_smoothed = scipy.ndimage.gaussian_filter(ref_frame, 3)
-        # no_background = cv2.inRange(np.sum(frame_smoothed**2 - ref_frame_smoothed**2, axis = -1), 400, 800)
-        # for i in range(3):
-        #     frame[:,:,i] = frame[:,:,i]*edges
-        
-        
-
-        # find contours
-        contours, hiearchy  = cv2.findContours(threshold_frame, cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-        #print("contours: ", len(contours))
-        largest_c = -1
-        largest_area = -1
-        for c in range(len(contours)):
-            if (cv2.contourArea(contours[c]) > largest_area):
-                largest_c = c
-                largest_area = cv2.contourArea(contours[c]) 
-            
-        if largest_c > -1:
-            # find convex hull and defects
-            hull = cv2.convexHull(contours[largest_c])
-            hull_ind = np.array(cv2.convexHull(contours[largest_c], returnPoints=False))
-            hull_ind[::-1].sort(axis = 0)
-            defects = cv2.convexityDefects(contours[largest_c], hull_ind)
-            
-            # find vertices of outline
-            perim = cv2.arcLength(hull, True)
-            poly = cv2.approxPolyDP(hull, 0.02*perim, True)
-            # print(poly.shape)
-
-            # find center of hand
-            center = (np.sum(poly, axis = 0)//poly.shape[0])[0]
-            center[1] = center[1] + perim/19
-            radius = int(perim/8)
-            cv2.circle(frame, center, radius, (255,0,255), 2)
-
-            # count fingers
-            num_fingers = 0
-            for i in range(poly.shape[0]):
-                vert = poly[i][0]
-                if vert[1] < center[1] and math.dist(vert, center) > radius:
+        for i in range(poly.shape[0]):
+            vert = poly[i][0]
+            if vert[1] < center[1] and math.dist(vert, center) > radius:
+                if (i > 0 and math.dist(vert, poly[i-1][0]) > 50) or i == 0:
                     num_fingers +=1
-            #print("fingers: ", num_fingers)
-            cv2.putText(frame, str(num_fingers), (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            # for i in range(defects.shape[0]):
-            #     pt_ind = defects[i,0,2]
-            #     distance = defects[i,0,3]
-            #     #if distance > 5000:
-            #     #print(distance)
-            #     pt = tuple(contours[largest_c][pt_ind][0])
-            #     cv2.circle(frame, pt, 5, (255,0,0), 2)
-
-            cv2.drawContours(frame, [poly], 0, (0, 255, 0), 3)
+                    finger_points.append(vert)
+                    cv2.circle(frame, vert, 3, (255,0,0), 2)
+        #print("fingers: ", num_fingers)
+        cv2.putText(frame, str(num_fingers), (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+  
+        cv2.drawContours(frame, [poly], 0, (0, 255, 0), 3)
         cv2.drawContours(frame, [contours[largest_c]], 0, (0, 0, 255), 3)
-        
+    
+    return (frame, center, num_fingers, np.array(finger_points), threshold_frame)
 
-        cv2.imshow("computer camera", frame)
-        #cv2.imshow("edges", edges)
-        cv2.imshow("thresh", threshold_frame)
-        if cv2.waitKey(1) == ord('q'):
-            break
 
 # determine local motion
 def local_flow(flow):
@@ -564,7 +534,7 @@ def track(effect):
         cv2.circle(frame, (center[0],center[1]), 5, (255, 0, 0), 3)
 
         if center[0] > 0 and no_center_count < no_center_limit:
-             # calculate optical flow around center point
+            # calculate optical flow around center point
             direction = np.insert(direction, 0, optical_flow(prev_frame, raw_frame, center, frame))
             direction = direction[:6]
             # add effect to video at center point
@@ -635,8 +605,9 @@ if __name__ == "__main__":
     np.savetxt("fire_effect.txt", save_arr)
     '''
     
-    # effect_arr = np.loadtxt("fire_effect.txt")
-    # effect_arr = effect_arr[4:].reshape((int(effect_arr[0]), int(effect_arr[1]), int(effect_arr[2]), int(effect_arr[3])))
+    # load fire effect
+    effect = np.loadtxt("fire_effect.txt")
+    effect = effect[4:].reshape((int(effect[0]), int(effect[1]), int(effect[2]), int(effect[3])))
     # print(effect_arr.shape)
 
     # # for t in range(10):
@@ -645,11 +616,115 @@ if __name__ == "__main__":
     # #         cv2.imshow("tilted", output)
     # #         cv2.waitKey(50)
     # track(effect_arr)
-   
-    '''
-    frame = np.array([[[1], [2]], [[3], [4]]])
-    print(frame)
-    print(effect_tilt(frame, 1))
-    '''
-    #testing()
-    gesture()
+
+    # thresholds for color
+    lower_thresh, upper_thresh = sample_hand()
+    # history of flow directions
+    direction = np.full(6, "N")
+    # how much the effect should be tilted
+    tilt_num = 0
+    # coloring effect (hsv)
+    color_effect = 0
+    # history of gestures
+    gesture_list = np.full(6, 0)
+
+    # if the center hasn't been detected for a certain amount of time stop displaying flame
+    no_center_count = 0
+    no_center_limit = 5
+    prev_center = [0,0]
+
+    vfx_num = 0
+    vfx_length = effect.shape[0]
+    
+    video = cv2.VideoCapture(0)
+    # need previous frame for optical flow
+    ret, prev_frame = video.read()
+    prev_frame = cv2.flip(prev_frame, 1)
+    while True:
+        ret, frame = video.read()
+        if not ret:
+            print("Frame not read correctly")
+            break
+        
+        
+        # get gesture
+        frame = cv2.flip(frame, 1)
+        raw_frame = frame.copy()
+        frame_gesture, center_gesture, num_fingers, finger_points, threshold_frame = gesture(lower_thresh, upper_thresh, frame.copy())
+        
+        frame_flow = frame.copy()
+        # 1 finger -> allow tilt
+        if num_fingers == 1:
+            # calculate optical flow around center point
+            direction = np.insert(direction, 0, optical_flow(prev_frame, raw_frame, finger_points[0], frame_flow))
+            direction = direction[:6]
+            #print(direction)
+            # add effect to video at center point
+            center = finger_points[0]
+            flame = effect[vfx_num].copy()
+            flame[:,:,0] =  flame[:,:,0] + color_effect/255
+            flame[:,:,2] =  flame[:,:,2] - color_effect/255
+            #print(color_effect)
+            overlay_effect(frame, effect_tilt(flame, tilt_num), center)
+
+            # calculate tilt
+            center_thres = 7.5
+            if math.dist(prev_center, center) > center_thres:
+                # if center is moving and optical flow is left/right then the effect tilts
+                if np.count_nonzero(direction[:5] == "L") >=3:
+                    tilt_num = max(tilt_num - 0.25, -3.5) 
+                elif np.count_nonzero(direction[:5] == "R")>=3:
+                    tilt_num = min(tilt_num + 0.25, 3.5) 
+                else:
+                    # stopped going left but still moving
+                    if tilt_num < 0:
+                        tilt_num = min(tilt_num + 0.75, 0) 
+                    # stopped going right but still moving
+                    elif tilt_num > 0:
+                        tilt_num = max(tilt_num - 0.75, 0) 
+            else:
+                # if center is not moving and optical flow is up/down then the effect should resize
+                #  stopped moving so effect should stop tilting
+                if tilt_num < 0:
+                    tilt_num = min(tilt_num + 0.75, 0) 
+                elif tilt_num > 0:
+                    tilt_num = max(tilt_num - 0.75, 0) 
+            
+            # update previous center, used to check for movement (filter out noise)
+            prev_center =  center
+
+        # 2 finger -> change color
+        elif num_fingers == 2:
+            # center in between both fingers
+            center = (finger_points[0] + finger_points[1])//2
+            # calculate optical flow around center point
+            direction = np.insert(direction, 0, optical_flow(prev_frame, raw_frame, center, frame_flow))
+            direction = direction[:6]
+            #print(direction)
+            flame = effect[vfx_num].copy()
+            flame[:,:,0] =  flame[:,:,0] + color_effect/255
+            flame[:,:,2] =  flame[:,:,2] - color_effect/255
+            #print(color_effect)
+            overlay_effect(frame, flame, center)
+
+            # optical flow is up or down
+            if np.count_nonzero(direction[:5] == "U") >=3:
+                color_effect = min(color_effect+15, 225)
+            elif np.count_nonzero(direction[:5] == "D")>=3:
+                color_effect = max(color_effect-15, 0)
+
+        # >=3 finger -> toggle cartoon filter
+        
+        # increment to next frame in vfx
+        vfx_num = (vfx_num+1)%vfx_length
+        # update previous frame for optical flow
+        prev_frame = raw_frame
+        # no center count continuously increments and is only reset if a center is found
+        # no_center_count +=1
+        
+        # display
+        cv2.imshow("gesture", frame_gesture)
+        cv2.imshow("camera", frame)
+        cv2.imshow("optical flow", frame_flow)
+        if cv2.waitKey(1) == ord('q'):
+            break
