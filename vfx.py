@@ -138,62 +138,203 @@ def calc_depth(img1, img2):
     print(disparity)
     return disparity
 
+# implements a cartoon filter on the given frame
+def cartoon_filter(frame):
+    edges = cv2.adaptiveThreshold(scipy.ndimage.gaussian_filter(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY),3), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 1)/255
+    # add black lines to the frame
+    for i in range(3):
+        frame[:, :, i] = scipy.ndimage.gaussian_filter(frame[:, :, i], 5)
+        frame[:, :, i] = frame[:, :, i]*edges
+    # give appearance of cartoon color
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    hsv[:, :, 2] = (hsv[:, :, 2]//18) * 18
+    frame = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    return frame
+
+def web_cam_cal():
+    X_3d = np.array([[-52.75, -13.5, 139, 1],
+                    [2, 6, 57, 1],
+                    [1.75, -7, 72, 1],
+                    [-12.5, -11.5, 35, 1],
+                    [-7.75, -18, 53.25, 1],
+                    [1.75, -14, 44, 1]])
+    x_2d = np.array([[500.0, 200.0], 
+                        [300.0, 600.0],
+                        [500.0, 600.0],
+                        [700.0, 200.0],
+                        [700.0, 400.0],
+                        [700.0, 600.0]])
+    A = []
+    for i in range(6):
+        pt_2d = x_2d[i]
+        pt_3d = X_3d[i]
+        row1 = np.append(np.append(np.array([0, 0, 0, 0]), -pt_3d), pt_2d[1]*pt_3d)
+        row2 = np.append(np.append(pt_3d, np.array([0,0,0,0])), -pt_2d[0]*pt_3d)
+        A.append(row1)
+        A.append(row2)
+
+    u, s, V = np.linalg.svd(A)
+    P = V[len(V) - 1].reshape((3,4))
+    
+    P_inv = np.linalg.pinv(P)
+    return P
 
 def testing():
-    video = cv2.VideoCapture(1)
-    video_usb = cv2.VideoCapture(0)
-    count = 0
-    matches = []
-    depth = []
+    video = cv2.VideoCapture(0)
+    
+    
     while True:
-        #frame is in BGR, shape: (720, 1280, 3)
+        #frame is in BGR, shape: (1080, 1920, 3)
         ret, frame = video.read()
-        #frame is in BGR, shape: (960, 1280, 3)
-        ret_usb, frame_usb = video_usb.read()
-        if not ret or not ret_usb:
+
+        if not ret:
             print("Frame not read correctly")
             break
-        '''
-        frame_g = (cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)/255)[:-50,230:-130]
-        print(frame_g.shape)
-        frame_usb_g = (cv2.cvtColor(frame_usb, cv2.COLOR_BGR2GRAY)/255)[100: , :]
-        print(frame_usb_g.shape)
-        '''
-        frame_usb = frame_usb[100:]
-        frame = frame[:-100,200:-130]
-        usb_g_downsampled = skimage.transform.resize(frame_usb/255, (frame.shape[0], frame_usb.shape[1]//2), anti_aliasing=True, preserve_range=True)
-        frame_g_downsampled = skimage.transform.resize(frame/255, (frame.shape[0], frame_usb.shape[1]//2), anti_aliasing=True, preserve_range=True)
-        disparity = calc_depth(frame_g_downsampled, usb_g_downsampled)
-        '''
-        # calculate depth with sift
-        if count == 5:
-            temp_matches, temp_depth = calc_depth(frame, frame_usb)
-            count = 0
-            if len(temp_matches) > 0:
-                matches = temp_matches
-                depth = temp_depth
-        # display matches
-        for p in range(len(matches)):
-            point = matches[p]
-            cv2.circle(frame, (int(point[0]),int(point[1])), 3, (int(255*depth[p]), 0, 0), 3)
-            cv2.circle(frame_usb, (int(point[2]),int(point[3])), 3, (int(255*depth[p]), 0, 0), 3)
-        '''
-        cv2.imshow("depth", disparity)
-        # display frame
-        cv2.imshow("computer camera", frame_g_downsampled)
-        #cv2.imshow("usb camera", usb_g_downsampled)
-        #cv2.waitKey(0)
-        #break
-        if cv2.waitKey(1) == ord('q'):
-            break
-        #count = count + 1
+        cartoon = cartoon_filter(np.copy(frame))
+        frame = cv2.flip(frame, 1)
         
-        '''
-        temp = segment(frame)
-        cv2.imshow("web camera", temp)
+        # cv2.circle(frame, (300, 200), 5, (255, 0, 0), 3)
+        # cv2.circle(frame, (500, 200), 5, (255, 0, 0), 3)
+        # cv2.circle(frame, (700, 200), 5, (255, 0, 0), 3)
+
+        # cv2.circle(frame, (300, 400), 5, (255, 0, 0), 3)
+        # cv2.circle(frame, (500, 400), 5, (255, 0, 0), 3)
+        # cv2.circle(frame, (700, 400), 5, (255, 0, 0), 3)
+
+        # cv2.circle(frame, (300, 600), 5, (255, 0, 0), 3)
+        # cv2.circle(frame, (500, 600), 5, (255, 0, 0), 3)
+        # cv2.circle(frame, (700, 600), 5, (255, 0, 0), 3)
+
+        # display frame
+        cv2.imshow("computer camera", frame)
+        cv2.imshow("edges", cartoon)
         if cv2.waitKey(1) == ord('q'):
             break
-        '''
+    
+# gesture detection using convex hull
+def gesture():
+    video = cv2.VideoCapture(0)
+    time.sleep(1)
+    ret, ref_frame = video.read()
+    ref_frame = cv2.flip(ref_frame, 1)
+    if not ret:
+        print("Frame not read correctly")
+        return
+
+    w = ref_frame.shape[1]
+    h = ref_frame.shape[0]
+    
+    samples = []
+    sample_size = 20
+    # sample hand color
+    while True:
+        ret, frame = video.read()
+        
+        if not ret:
+            print("Frame not read correctly")
+            break
+
+        frame = cv2.flip(frame, 1)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+        # area to be sampled
+        cv2.rectangle(frame, (w//2, h//3), (w//2+sample_size, h//3+sample_size), (0, 255, 0), 3)
+        cv2.rectangle(frame, (w//2, h//2), (w//2+sample_size, h//2+sample_size), (0, 255, 0), 3)
+
+        cv2.imshow("computer camera", frame)
+        if cv2.waitKey(1) == ord('s'):
+            
+            first_sample = np.array([np.sum(hsv[h//3:h//3+sample_size, w//2:w//2+sample_size, 0]), np.sum(hsv[h//3:h//3+sample_size, w//2:w//2+sample_size, 1]), np.sum(hsv[h//3:h//3+sample_size, w//2:w//2+sample_size, 2])])
+            second_sample = np.array([np.sum(hsv[h//2:h//2+sample_size, w//2:w//2+sample_size, 0]), np.sum(hsv[h//2:h//2+sample_size, w//2:w//2+sample_size, 1]), np.sum(hsv[h//2:h//2+sample_size, w//2:w//2+sample_size, 2])])
+            
+            samples.append(first_sample/(sample_size**2))
+            samples.append(second_sample/(sample_size**2))
+            break
+
+    print(samples)
+
+    lower_thresh = np.array([min(samples[0][0], samples[1][0]), min(samples[0][1], samples[1][1]), min(samples[0][2], samples[1][2])])
+    upper_thresh = np.array([max(samples[0][0], samples[1][0]), max(samples[0][1], samples[1][1]), max(samples[0][2], samples[1][2])])
+
+    # increase margins of bounds
+    #for i in range(len(lower_thresh)):
+    # H
+    lower_thresh[0] = max(lower_thresh[0] - 10, 0)
+    upper_thresh[0] = min(upper_thresh[0] + 10, 255)
+    # S
+    lower_thresh[1] = max(lower_thresh[1] - 20, 75)
+    upper_thresh[1] = min(upper_thresh[1] + 20, 255)
+    # V
+    lower_thresh[2] = max(lower_thresh[2] - 45, 75)
+    upper_thresh[2] = min(upper_thresh[2] + 45, 255)
+
+    print(lower_thresh)
+    print(upper_thresh)
+
+    while True:
+        ret, frame = video.read()
+        if not ret:
+            print("Frame not read correctly")
+            break
+
+        frame = cv2.flip(frame, 1)
+
+        # threshold image based on color
+        edges = cv2.adaptiveThreshold(scipy.ndimage.gaussian_filter(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY),3), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 13, 2)/255
+        
+        # frame_edge = frame
+        # for i in range(3):
+        #     frame_edge[:,:,i] = frame_edge[:,:,i]*edges
+
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        threshold_frame = cv2.inRange(hsv, lower_thresh, upper_thresh)
+        #threshold_frame = threshold_frame * edges
+        #threshold_frame = scipy.ndimage.convolve(threshold_frame, [[1/3, 1/3, 1/3]])
+        
+        #edges = 1 - cv2.Canny(frame, 50, 75)/255
+        # frame_smoothed = scipy.ndimage.gaussian_filter(frame, 3)
+        # ref_frame_smoothed = scipy.ndimage.gaussian_filter(ref_frame, 3)
+        # no_background = cv2.inRange(np.sum(frame_smoothed**2 - ref_frame_smoothed**2, axis = -1), 400, 800)
+        # for i in range(3):
+        #     frame[:,:,i] = frame[:,:,i]*edges
+        
+        
+
+        # find contours
+        contours, hiearchy  = cv2.findContours(threshold_frame, cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+        #print("contours: ", len(contours))
+        largest_c = -1
+        largest_area = -1
+        for c in range(len(contours)):
+            if (cv2.contourArea(contours[c]) > largest_area):
+                largest_c = c
+                largest_area = cv2.contourArea(contours[c]) 
+            
+        if largest_c > -1:
+            # find convex hull and defects
+            hull = cv2.convexHull(contours[largest_c])
+            hull_ind = np.array(cv2.convexHull(contours[largest_c], returnPoints=False))
+            hull_ind[::-1].sort(axis = 0)
+            defects = cv2.convexityDefects(contours[largest_c], hull_ind)
+            defects.sort(axis = -1)
+            print(defects)
+            for i in range(defects.shape[0]):
+                pt_ind = defects[i,0,2]
+                distance = defects[i,0,3]
+                #if distance > 5000:
+                #print(distance)
+                pt = tuple(contours[largest_c][pt_ind][0])
+                cv2.circle(frame, pt, 5, (255,0,0), 2)
+
+            cv2.drawContours(frame, [hull], 0, (0, 255, 0), 3)
+        cv2.drawContours(frame, [contours[largest_c]], 0, (0, 0, 255), 3)
+        
+
+        cv2.imshow("computer camera", frame)
+        #cv2.imshow("edges", edges)
+        cv2.imshow("thresh", threshold_frame)
+        if cv2.waitKey(1) == ord('q'):
+            break
 
 # determine local motion
 def local_flow(flow):
@@ -474,19 +615,21 @@ if __name__ == "__main__":
     np.savetxt("fire_effect.txt", save_arr)
     '''
     
-    effect_arr = np.loadtxt("fire_effect.txt")
-    effect_arr = effect_arr[4:].reshape((int(effect_arr[0]), int(effect_arr[1]), int(effect_arr[2]), int(effect_arr[3])))
-    print(effect_arr.shape)
+    # effect_arr = np.loadtxt("fire_effect.txt")
+    # effect_arr = effect_arr[4:].reshape((int(effect_arr[0]), int(effect_arr[1]), int(effect_arr[2]), int(effect_arr[3])))
+    # print(effect_arr.shape)
 
-    # for t in range(10):
-    #     for f in range(effect_arr.shape[0]):
-    #         output = effect_tilt(effect_arr[f], t)
-    #         cv2.imshow("tilted", output)
-    #         cv2.waitKey(50)
-    track(effect_arr)
+    # # for t in range(10):
+    # #     for f in range(effect_arr.shape[0]):
+    # #         output = effect_tilt(effect_arr[f], t)
+    # #         cv2.imshow("tilted", output)
+    # #         cv2.waitKey(50)
+    # track(effect_arr)
    
     '''
     frame = np.array([[[1], [2]], [[3], [4]]])
     print(frame)
     print(effect_tilt(frame, 1))
     '''
+    #testing()
+    gesture()
