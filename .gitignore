@@ -6,3 +6,5 @@ subsample/
 __pycache__/
 .DS_Store
 classifier/__pycache__/
+fire_effect.txt
+*.pth
