@@ -626,7 +626,7 @@ if __name__ == "__main__":
     # coloring effect (hsv)
     color_effect = 0
     # history of gestures
-    gesture_list = np.full(6, 0)
+    gesture_list = np.full(6, 10)
 
     # if the center hasn't been detected for a certain amount of time stop displaying flame
     no_center_count = 0
@@ -636,6 +636,9 @@ if __name__ == "__main__":
     vfx_num = 0
     vfx_length = effect.shape[0]
     
+    # flag for cartoon filter
+    cartoon = False
+
     video = cv2.VideoCapture(0)
     # need previous frame for optical flow
     ret, prev_frame = video.read()
@@ -651,7 +654,9 @@ if __name__ == "__main__":
         frame = cv2.flip(frame, 1)
         raw_frame = frame.copy()
         frame_gesture, center_gesture, num_fingers, finger_points, threshold_frame = gesture(lower_thresh, upper_thresh, frame.copy())
-        
+        gesture_list = np.insert(gesture_list, 0, num_fingers)
+        gesture_list = gesture_list[:6]
+
         frame_flow = frame.copy()
         # 1 finger -> allow tilt
         if num_fingers == 1:
@@ -665,6 +670,8 @@ if __name__ == "__main__":
             flame[:,:,0] =  flame[:,:,0] + color_effect/255
             flame[:,:,2] =  flame[:,:,2] - color_effect/255
             #print(color_effect)
+            if cartoon:
+                frame = cartoon_filter(frame)
             overlay_effect(frame, effect_tilt(flame, tilt_num), center)
 
             # calculate tilt
@@ -705,6 +712,8 @@ if __name__ == "__main__":
             flame[:,:,0] =  flame[:,:,0] + color_effect/255
             flame[:,:,2] =  flame[:,:,2] - color_effect/255
             #print(color_effect)
+            if cartoon:
+                frame = cartoon_filter(frame)
             overlay_effect(frame, flame, center)
 
             # optical flow is up or down
@@ -714,7 +723,13 @@ if __name__ == "__main__":
                 color_effect = max(color_effect-15, 0)
 
         # >=3 finger -> toggle cartoon filter
-        
+        elif num_fingers >= 3:
+            # was not >=3 and then turned to >=3 gesture
+            if np.count_nonzero(gesture_list[1:]<3) >=3 and np.count_nonzero(gesture_list[:5] >=3) >=3:
+                cartoon = not cartoon
+            if cartoon:
+                frame = cartoon_filter(frame)
+
         # increment to next frame in vfx
         vfx_num = (vfx_num+1)%vfx_length
         # update previous frame for optical flow
