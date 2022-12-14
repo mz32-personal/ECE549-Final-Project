@@ -211,6 +211,8 @@ def testing():
         if cv2.waitKey(1) == ord('q'):
             break
     
+# def sample_hand():
+
 # gesture detection using convex hull
 def gesture():
     video = cv2.VideoCapture(0)
@@ -316,17 +318,35 @@ def gesture():
             hull_ind = np.array(cv2.convexHull(contours[largest_c], returnPoints=False))
             hull_ind[::-1].sort(axis = 0)
             defects = cv2.convexityDefects(contours[largest_c], hull_ind)
-            defects.sort(axis = -1)
-            print(defects)
-            for i in range(defects.shape[0]):
-                pt_ind = defects[i,0,2]
-                distance = defects[i,0,3]
-                #if distance > 5000:
-                #print(distance)
-                pt = tuple(contours[largest_c][pt_ind][0])
-                cv2.circle(frame, pt, 5, (255,0,0), 2)
+            
+            # find vertices of outline
+            perim = cv2.arcLength(hull, True)
+            poly = cv2.approxPolyDP(hull, 0.02*perim, True)
+            # print(poly.shape)
 
-            cv2.drawContours(frame, [hull], 0, (0, 255, 0), 3)
+            # find center of hand
+            center = (np.sum(poly, axis = 0)//poly.shape[0])[0]
+            center[1] = center[1] + perim/19
+            radius = int(perim/8)
+            cv2.circle(frame, center, radius, (255,0,255), 2)
+
+            # count fingers
+            num_fingers = 0
+            for i in range(poly.shape[0]):
+                vert = poly[i][0]
+                if vert[1] < center[1] and math.dist(vert, center) > radius:
+                    num_fingers +=1
+            #print("fingers: ", num_fingers)
+            cv2.putText(frame, str(num_fingers), (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # for i in range(defects.shape[0]):
+            #     pt_ind = defects[i,0,2]
+            #     distance = defects[i,0,3]
+            #     #if distance > 5000:
+            #     #print(distance)
+            #     pt = tuple(contours[largest_c][pt_ind][0])
+            #     cv2.circle(frame, pt, 5, (255,0,0), 2)
+
+            cv2.drawContours(frame, [poly], 0, (0, 255, 0), 3)
         cv2.drawContours(frame, [contours[largest_c]], 0, (0, 0, 255), 3)
         
 
