@@ -309,7 +309,7 @@ def gesture(detector, classifier, frame):
         output = detector(processed_frame)[0]
     boxes = output["boxes"][:num_hands]
     scores = output["scores"][:num_hands]
-    labels = output["labels"][:num_hands]
+    gesture = ""
     x1, x2, y1,y2 = 0,0,0,0
     for i in range(min(num_hands, len(boxes))):
         if scores[i] > threshold:
@@ -325,17 +325,15 @@ def gesture(detector, classifier, frame):
             x2 = int((boxes[i][2] - padding_w) * scale)
             y2 = int((boxes[i][3] - padding_h) * scale)
 
-            # boxed_hand_img = preprocess_classifier(x1,y1,x2,y2, frame)
-
-            # labels = classifier(boxed_hand_img).squeeze(0)[:-1]
-            # label = torch.argmax(labels).item()
-
+            boxed_hand_img = preprocess_classifier(x1,y1,x2,y2, frame)
+            labels = classifier(boxed_hand_img).squeeze(0)[:-1]
+            label = torch.argmax(labels).item()
+            gesture = targets[int(label)]
             cv2.rectangle(frame, (x1, y1), (x2, y2), COLOR, thickness=3)
-            cv2.putText(frame, targets[int(labels[i])-1], (x1, y1 - 10),
+            cv2.putText(frame, gesture, (x1, y1 - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), thickness=3)
 
     center = ((x1+x2)//2, (y1+y2)//2)
-    gesture = targets[int(labels[i])-1]
 
     if gesture in ["call", "like", "one", "mute"]: num_fingers = 1
     elif gesture in ["peace", "peace inverted", "rock", "two up","two up inverted"]: num_fingers = 2
